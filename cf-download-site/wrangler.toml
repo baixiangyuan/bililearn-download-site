@@ -1,0 +1,9 @@
+name = "bililearn-download"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+
+# 部署后可通过 https://bililearn-download.<你的子域>.workers.dev 访问
+# 如需绑定自己的域名，取消下面注释并改成你的域名：
+# routes = [
+#   { pattern = "download.example.com", custom_domain = true }
+# ]

@@ -1,0 +1,38 @@
+{
+  "repo": "xiaoyaya191/bilibili_learning_bot",
+  "token": "",
+  "filesDir": "/var/lib/dl-mirror/files",
+  "manifestPath": "/var/lib/dl-mirror/manifest.json",
+  "publicBaseUrl": "https://dl.example.com/files",
+  "urlTemplate": "{base}/{version}/{platform}/{file}",
+  "platforms": {
+    "windows": {
+      "include": ["windows", "win64", "win32", "\\.exe$", "\\.exe\\.", "setup", "-pc-"],
+      "exclude": ["source", "-src\\.", "sha256", "checksum"],
+      "defaultPlatform": "windows"
+    },
+    "android": {
+      "include": ["android", "\\.apk$"],
+      "exclude": ["source", "-src\\.", "sha256", "checksum"],
+      "defaultPlatform": null
+    },
+    "mac": {
+      "include": ["mac", "darwin", "osx", "\\.dmg$"],
+      "exclude": ["source", "-src\\.", "sha256", "checksum"],
+      "defaultPlatform": null
+    },
+    "linux": {
+      "include": ["linux", "\\.appimage$", "\\.deb$", "\\.rpm$"],
+      "exclude": ["source", "-src\\.", "sha256", "checksum"],
+      "defaultPlatform": null
+    }
+  },
+  "fallbackPlatform": "windows",
+  "fallbackExtensions": [".zip", ".7z", ".rar", ".tar.gz", ".tgz", ".gz"],
+  "includePrerelease": false,
+  "keepVersions": 5,
+  "downloadWorkers": 3,
+  "requestTimeout": 30,
+  "chunkSize": 1048576,
+  "resume": true
+}

@@ -1,0 +1,14 @@
+# 测试运行残留
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 本地临时数据
+/tmp-*/
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store

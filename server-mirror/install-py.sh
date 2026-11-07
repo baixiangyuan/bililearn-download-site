@@ -19,13 +19,15 @@ PORT="40034"
 INTERVAL="1800"
 
 # ---------- 参数解析 ----------
+FORCE_IP=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --port)     PORT="$2"; shift 2 ;;
         --interval) INTERVAL="$2"; shift 2 ;;
         --dir)      INSTALL_DIR="$2"; shift 2 ;;
+        --ip)       FORCE_IP="$2"; shift 2 ;;
         -h|--help)
-            grep '^#' "$0" | sed 's/^# \{0,1\}//' | head -14
+            grep '^#' "$0" | sed 's/^# \{0,1\}//' | head -18
             exit 0 ;;
         *) echo "未知参数：$1"; exit 1 ;;
     esac
@@ -67,15 +69,74 @@ cd "${INSTALL_DIR}"
 curl -fsSL "${REPO_RAW}/mirror.py" -o mirror.py || die "下载 mirror.py 失败"
 curl -fsSL "${REPO_RAW}/serve.py"  -o serve.py  || die "下载 serve.py 失败"
 
-# mirror.json 不存在才拉，避免覆盖已有配置
-if [ ! -f mirror.json ]; then
-    curl -fsSL "${REPO_RAW}/mirror.json" -o mirror.json || die "下载 mirror.json 失败"
+# mirror.json 每次都拉最新的（平台规则、代理配置可能已更新）。
+# 下面只覆盖本机相关的地址字段，用户手动改过的 repo / keepVersions 等会保留。
+if [ -f mirror.json ]; then
+    cp -f mirror.json mirror.json.bak
+    echo "已备份原配置到 mirror.json.bak"
+fi
+curl -fsSL "${REPO_RAW}/mirror.json" -o mirror.json.new || die "下载 mirror.json 失败"
+
+say "合配置"
+
+python3 - <<'PY'
+import json, pathlib
+
+new = json.loads(pathlib.Path("mirror.json.new").read_text(encoding="utf-8-sig"))
+
+old = {}
+bak = pathlib.Path("mirror.json.bak")
+if bak.exists():
+    try:
+        old = json.loads(bak.read_text(encoding="utf-8-sig"))
+    except Exception:
+        old = {}
+
+# 继承用户可能手动改过的项；平台规则、代理等一律用仓库最新版
+for key in ("repo", "token", "includePrerelease", "keepVersions",
+            "downloadWorkers", "requestTimeout", "chunkSize", "resume",
+            "fallbackPlatform", "fallbackExtensions", "githubProxy",
+            "proxyFallback", "urlTemplate"):
+    if key in old:
+        new[key] = old[key]
+
+pathlib.Path("mirror.json").write_text(
+    json.dumps(new, ensure_ascii=False, indent=2), encoding="utf-8")
+print("配置已合并（平台规则用最新版，用户自定义项已保留）")
+PY
+
+rm -f mirror.json.new
+# ---------- 探测公网 IP ----------
+# 必须拿到公网地址：hostname -I 首项常是内网网段（阿里云典型是 172.x），
+# 写进 manifest 后用户下载的就是打不开的内网地址。
+say "确定对外地址"
+
+IP=""
+if [ -n "$FORCE_IP" ]; then
+    IP="$FORCE_IP"
+    echo "使用 --ip 指定：$IP"
+else
+    for svc in "https://api.ipify.org" "https://ifconfig.me/ip" "https://ip.sb" "https://icanhazip.com"; do
+        IP=$(curl -fsS -m 6 "$svc" 2>/dev/null | tr -d '[:space:]')
+        # 只接受合法 IPv4 公网地址：每段 0-255，且排除 10./172.16-31./192.168./127.
+        # 以及环回、链路本地、运营商级 NAT、组播、广播和保留段。
+        # （早期版本用 hostname -I 兜底，那会取到阿里云的 172.x 内网地址，
+        #   导致 manifest 里的下载链接全部指向打不开的内网 IP。）
+        if echo "$IP" | grep -qE '^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$' \
+           && ! echo "$IP" | grep -qE '^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|0\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|22[4-9]\.|2[3-5][0-9]\.|255\.)'; then
+            echo "探测到公网地址：$IP"
+            break
+        fi
+        IP=""
+    done
 fi
 
-say "生成本机配置"
-
-IP=$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
-[ -n "${IP}" ] || IP="8.152.0.186"
+if [ -z "$IP" ]; then
+    warn "没能拿到公网地址。为避免把内网地址写进下载地址，请手动指定："
+    printf '请输入服务器公网 IP： '
+    read -r IP
+    [ -n "$IP" ] || die "未提供 IP，退出"
+fi
 
 python3 - "$IP" "$PORT" <<'PY'
 import json, sys, pathlib

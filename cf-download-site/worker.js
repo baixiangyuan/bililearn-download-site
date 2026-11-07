@@ -21,8 +21,8 @@ const CONFIG = {
   repoText: '访问 GitHub 仓库',
 
   // ---------- 后端 manifest 地址 ----------
-  // 填你服务器的 manifest.json 完整 URL。这是唯一需要与后端一致的地方。
-  manifestUrl: 'https://dl.example.com/manifest.json',
+  // 你服务器的 manifest.json 完整 URL。这是唯一需要与后端一致的地方。
+  manifestUrl: 'http://8.152.0.186:40034/manifest.json',
 
   // 请求超时（毫秒）。后端无响应时前端会降级显示兜底版本。
   manifestTimeout: 8000,
@@ -38,12 +38,32 @@ const CONFIG = {
   },
 
   // ---------- 后端不可用时的兜底版本 ----------
-  // 建议填一个长期有效的地址（如 GitHub Release 固定链接），
-  // 这样服务器挂掉时页面至少还能下载。
+  // 服务器挂掉时页面至少还能下载。地址取自仓库真实附件名。
+  // 走 gh-proxy 加速，国内用户也拉得动。
   fallback: {
+    '3.1.6': {
+      windows: {
+        url: 'https://gh-proxy.org/https://github.com/xiaoyaya191/bilibili_learning_bot/releases/download/v3.1.6/BiliLearn-Web-3.1.6-Windows-x64.zip',
+        size: '102.31 MB',
+        date: '2026-10-10',
+        note: 'GitHub 直连'
+      },
+      source: {
+        url: 'https://gh-proxy.org/https://github.com/xiaoyaya191/bilibili_learning_bot/archive/refs/tags/v3.1.6.zip',
+        note: 'GitHub 源码'
+      }
+    },
     '3.1.4': {
-      windows: 'https://github.com/xiaoyaya191/bilibili_learning_bot/releases/download/v3.1.4/BiliLearn-3.1.4-win.zip',
-      source: 'https://github.com/xiaoyaya191/bilibili_learning_bot/archive/refs/tags/v3.1.4.zip'
+      windows: {
+        url: 'https://gh-proxy.org/https://github.com/xiaoyaya191/bilibili_learning_bot/releases/download/v3.1.4/BiliLearn-Web-3.1.4.zip',
+        size: '100.32 MB',
+        date: '2026-10-20',
+        note: 'GitHub 直连'
+      },
+      source: {
+        url: 'https://gh-proxy.org/https://github.com/xiaoyaya191/bilibili_learning_bot/archive/refs/tags/v3.1.4.zip',
+        note: 'GitHub 源码'
+      }
     }
   }
 };

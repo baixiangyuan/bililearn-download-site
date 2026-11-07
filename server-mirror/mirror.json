@@ -29,6 +29,8 @@
   },
   "fallbackPlatform": "windows",
   "fallbackExtensions": [".zip", ".7z", ".rar", ".tar.gz", ".tgz", ".gz"],
+  "githubProxy": "https://gh-proxy.org",
+  "proxyFallback": true,
   "includePrerelease": false,
   "keepVersions": 5,
   "downloadWorkers": 3,

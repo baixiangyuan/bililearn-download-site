@@ -84,6 +84,12 @@ DEFAULT_CONFIG = {
     # 只对下列归档后缀生效，避免把 README.pdf 之类也当安装包。
     "fallbackPlatform": "windows",
     "fallbackExtensions": [".zip", ".7z", ".rar", ".tar.gz", ".tgz", ".gz"],
+    # GitHub 下载加速前缀。国内服务器直连 github.com 下载大文件很慢，
+    # 走代理可显著提速。留空字符串 "" 则直连。
+    # 示例：https://gh-proxy.org  或  https://ghproxy.net  或  https://mirror.ghproxy.com
+    "githubProxy": "https://gh-proxy.org",
+    # 代理失效时是否回退直连重试。True 时先试代理，失败自动改直连。
+    "proxyFallback": True,
     "includePrerelease": False,
     "keepVersions": 5,                 # 只保留最近 N 个版本的安装包
     "downloadWorkers": 3,
@@ -91,6 +97,27 @@ DEFAULT_CONFIG = {
     "chunkSize": 1048576,
     "resume": True
 }
+
+
+def proxy_url(url: str, proxy: str) -> str:
+    """给 GitHub 地址套代理前缀。
+
+    https://github.com/a/b/releases/download/v1/c.zip
+      -> https://gh-proxy.org/https://github.com/a/b/releases/download/v1/c.zip
+
+    非 github.com / objects.githubusercontent.com 地址原样返回，
+    避免把已有 CDN 的地址也绕进代理。
+    """
+    if not proxy or not url:
+        return url
+    proxy = proxy.rstrip("/")
+    # 已经套过前缀就不重复套
+    if url.startswith(proxy + "/"):
+        return url
+    for host in ("https://github.com/", "https://objects.githubusercontent.com/"):
+        if url.startswith(host):
+            return proxy + "/" + url
+    return url
 
 
 # ---------------------------------------------------------------- 工具函数
@@ -228,9 +255,45 @@ class Mirror:
         }
         if self.cfg.get("token"):
             headers["Authorization"] = "Bearer " + self.cfg["token"]
+
+        # api.github.com 在国内也可能不稳，同样先试代理再回退直连
+        proxy = (self.cfg.get("githubProxy") or "").strip()
+        if proxy:
+            proxied = proxy + "/" + url
+            try:
+                self.vlog("经代理请求 API %s" % proxied)
+                req = urllib.request.Request(proxied, headers=headers)
+                with urllib.request.urlopen(req, timeout=self.cfg["requestTimeout"]) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except Exception as e:
+                if not self.cfg.get("proxyFallback", True):
+                    raise
+                self.log("API 代理 %s 失败（%s），回退直连" % (proxy, e))
+
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=self.cfg["requestTimeout"]) as r:
             return json.loads(r.read().decode("utf-8"))
+
+    def _fetch_with_proxy(self, url: str, dest: Path):
+        """先试代理，失败且允许回退时改直连。
+
+        返回 (实际使用的 url, download() 的结果)。代理不可用时日志说明，
+        不影响最终结果——只是慢一点。
+        """
+        proxy = (self.cfg.get("githubProxy") or "").strip()
+        if not proxy:
+            return url, self.download(url, dest)
+
+        proxied = proxy_url(url, proxy)
+        if proxied != url:
+            try:
+                self.vlog("经代理下载 %s" % proxied)
+                return proxied, self.download(proxied, dest)
+            except Exception as e:
+                if not self.cfg.get("proxyFallback", True):
+                    raise
+                self.log("代理 %s 失败（%s），回退直连" % (proxy, e))
+        return url, self.download(url, dest)
 
     def list_releases(self) -> list:
         out, page = [], 1
@@ -425,7 +488,7 @@ class Mirror:
                 return key, {"size": expected, "sha256": None, "file": a["name"],
                              "url": dest, "cached": False, "dry": True}
             self.log("下载 %s / %s（%s）" % (e["version"], a["platform"], a["name"]))
-            info = self.download(a["url"], dest)
+            _, info = self._fetch_with_proxy(a["url"], dest)
             self.stats["downloaded"] += 1
             self.stats["bytes"] += info["size"]
             self.log("完成 %s / %s（%s）" % (e["version"], a["platform"], human_size(info["size"])))
@@ -479,11 +542,13 @@ class Mirror:
             for plat, items in grouped.items():
                 # 单文件时保持对象形态（前端兼容），多文件时用数组
                 assets[plat] = items[0] if len(items) == 1 else items
-            # 源码包：直接指向 GitHub，不落盘
+            # 源码包：直接指向 GitHub（走代理加速），不落盘
             if e["tag"]:
                 assets["source"] = {
-                    "url": "https://github.com/%s/archive/refs/tags/%s.zip"
-                           % (self.cfg["repo"], e["tag"]),
+                    "url": proxy_url(
+                        "https://github.com/%s/archive/refs/tags/%s.zip"
+                        % (self.cfg["repo"], e["tag"]),
+                        self.cfg.get("githubProxy") or ""),
                     "sizeText": "ZIP",
                     "note": "GitHub 源码"
                 }
